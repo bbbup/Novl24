@@ -37,7 +37,7 @@ interface Tuan {
 
       if (res.data.assistStatus === 1) {
         // 已开，没满
-        console.log('已开团，未满，剩余', Math.round(res.data.assistValidMilliseconds / 1000 / 60), '分钟')
+        console.log('已开团，', res.data.assistedRecords.length, '/', res.data.assistNum, '，剩余', Math.round(res.data.assistValidMilliseconds / 1000 / 60), '分钟')
         shareCodeSelf.push({
           activityIdEncrypted: res.data.id,
           assistStartRecordId: res.data.assistStartRecordId,
@@ -58,32 +58,39 @@ interface Tuan {
           })
           await wait(1000)
         }
+      } else if (res.data.assistedRecords.length === res.data.assistNum) {
+        console.log('已成团')
+        res = await api('vvipclub_distributeBean_startAssist', {"activityIdEncrypted": res.data.id, "channel": "FISSION_BEAN"})
+        console.log('4', res)
+        await wait(2000)
+        if (res.success) {
+          console.log(`开团成功，结束时间：${res.data.endTime}`)
+          res = await api('distributeBeanActivityInfo', {"paramData": {"channel": "FISSION_BEAN"}})
+          shareCodeSelf.push({
+            activityIdEncrypted: res.data.id,
+            assistStartRecordId: res.data.assistStartRecordId,
+            assistedPinEncrypted: res.data.encPin,
+          })
+          await wait(1000)
+        }
       } else if (!res.data.canStartNewAssist) {
         console.log('不可开团')
       }
     } catch (e) {
-      console.log(e)
+      continue
     }
-
-    await wait(1000)
+    await wait(2000)
   }
 
-  console.log(shareCodeSelf)
-  shareCodeHW = getshareCodeHW('zjd')
-  let temp: Tuan[]
-  if (cookiesArr.length < 4) {
-    temp = Array.from([...shareCodeHW, ...shareCodeSelf])
-  } else {
-    temp = shareCodeSelf
-  }
-  for (let item of temp) {
-    if (!encPin.includes(item.assistedPinEncrypted)) {
-      encPin.push(item.assistedPinEncrypted)
-      shareCode.push(item)
-    }
-  }
-
+  o2s(shareCodeSelf)
   for (let [index, value] of cookiesArr.entries()) {
+    if (shareCodeHW.length === 0) {
+      shareCodeHW = await getshareCodeHW('zjd');
+    }
+    shareCode = index === 0
+      ? Array.from(new Set([...shareCodeHW, ...shareCodeSelf]))
+      : Array.from(new Set([...shareCodeSelf, ...shareCodeHW]))
+
     cookie = value
     UserName = decodeURIComponent(cookie.match(/pt_pin=([^;]*)/)![1])
     let {fp, tk, genKey} = await requestAlgo('d8ac0', USER_AGENT)
@@ -99,11 +106,12 @@ interface Tuan {
         } else if (res.resultCode === '2400203') {
           console.log('上限')
           break
+        } else if (res.resultCode === '2400205') {
+          console.log('对方已成团')
         } else if (res.success) {
           console.log('助力成功')
-          break
         } else {
-          o2s(res)
+          console.log('error', JSON.stringify(res))
         }
       } catch (e) {
         console.log(e)
